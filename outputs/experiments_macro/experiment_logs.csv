@@ -1,0 +1,18 @@
+company,stage,error,params
+明豊エンタープライズ,skip,observations 146 < min 150,
+明和地所,prophet,"Dataframe must have columns ""ds"" and ""y"" with the dates and values respectively.","{""changepoint_prior_scale"": 0.05, ""seasonality_mode"": ""additive"", ""seasonality_prior_scale"": 5.0}"
+明和地所,prophet,"Dataframe must have columns ""ds"" and ""y"" with the dates and values respectively.","{""changepoint_prior_scale"": 0.05, ""seasonality_mode"": ""additive"", ""seasonality_prior_scale"": 15.0}"
+明和地所,prophet,"Dataframe must have columns ""ds"" and ""y"" with the dates and values respectively.","{""changepoint_prior_scale"": 0.2, ""seasonality_mode"": ""additive"", ""seasonality_prior_scale"": 5.0}"
+明和地所,prophet,"Dataframe must have columns ""ds"" and ""y"" with the dates and values respectively.","{""changepoint_prior_scale"": 0.2, ""seasonality_mode"": ""additive"", ""seasonality_prior_scale"": 15.0}"
+明和地所,prophet,"Dataframe must have columns ""ds"" and ""y"" with the dates and values respectively.","{""changepoint_prior_scale"": 0.05, ""seasonality_mode"": ""multiplicative"", ""seasonality_prior_scale"": 5.0}"
+明和地所,prophet,"Dataframe must have columns ""ds"" and ""y"" with the dates and values respectively.","{""changepoint_prior_scale"": 0.05, ""seasonality_mode"": ""multiplicative"", ""seasonality_prior_scale"": 15.0}"
+明和地所,prophet,"Dataframe must have columns ""ds"" and ""y"" with the dates and values respectively.","{""changepoint_prior_scale"": 0.2, ""seasonality_mode"": ""multiplicative"", ""seasonality_prior_scale"": 5.0}"
+明和地所,prophet,"Dataframe must have columns ""ds"" and ""y"" with the dates and values respectively.","{""changepoint_prior_scale"": 0.2, ""seasonality_mode"": ""multiplicative"", ""seasonality_prior_scale"": 15.0}"
+ゴールドクレスト,prophet,"Dataframe must have columns ""ds"" and ""y"" with the dates and values respectively.","{""changepoint_prior_scale"": 0.05, ""seasonality_mode"": ""additive"", ""seasonality_prior_scale"": 5.0}"
+ゴールドクレスト,prophet,"Dataframe must have columns ""ds"" and ""y"" with the dates and values respectively.","{""changepoint_prior_scale"": 0.05, ""seasonality_mode"": ""additive"", ""seasonality_prior_scale"": 15.0}"
+ゴールドクレスト,prophet,"Dataframe must have columns ""ds"" and ""y"" with the dates and values respectively.","{""changepoint_prior_scale"": 0.2, ""seasonality_mode"": ""additive"", ""seasonality_prior_scale"": 5.0}"
+ゴールドクレスト,prophet,"Dataframe must have columns ""ds"" and ""y"" with the dates and values respectively.","{""changepoint_prior_scale"": 0.2, ""seasonality_mode"": ""additive"", ""seasonality_prior_scale"": 15.0}"
+ゴールドクレスト,prophet,"Dataframe must have columns ""ds"" and ""y"" with the dates and values respectively.","{""changepoint_prior_scale"": 0.05, ""seasonality_mode"": ""multiplicative"", ""seasonality_prior_scale"": 5.0}"
+ゴールドクレスト,prophet,"Dataframe must have columns ""ds"" and ""y"" with the dates and values respectively.","{""changepoint_prior_scale"": 0.05, ""seasonality_mode"": ""multiplicative"", ""seasonality_prior_scale"": 15.0}"
+ゴールドクレスト,prophet,"Dataframe must have columns ""ds"" and ""y"" with the dates and values respectively.","{""changepoint_prior_scale"": 0.2, ""seasonality_mode"": ""multiplicative"", ""seasonality_prior_scale"": 5.0}"
+ゴールドクレスト,prophet,"Dataframe must have columns ""ds"" and ""y"" with the dates and values respectively.","{""changepoint_prior_scale"": 0.2, ""seasonality_mode"": ""multiplicative"", ""seasonality_prior_scale"": 15.0}"

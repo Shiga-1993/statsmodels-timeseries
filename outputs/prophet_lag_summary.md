@@ -1,4 +1,5 @@
-# Prophet regressor lag summary (N225 normalized)
+# Prophet regressor lag summary (0-6 months)
+
 | Company | Best lag | Best RMSE | Lag0 | Lag1 | Lag2 | Lag3 | Lag4 | Lag5 | Lag6 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | アーバネットコーポレーション | 3 | 0.0491 | 0.0533 | 0.0541 | 0.0499 | 0.0491 | 0.0509 | 0.0500 | 0.0503 |
@@ -15,7 +16,7 @@
 | 明和地所 | 0 | 0.0607 | 0.0607 | 0.0720 | 0.0633 | 0.0625 | 0.0632 | 0.0637 | 0.0619 |
 | 明豊エンタープライズ | 2 | 0.0857 | 0.1111 | 0.1014 | 0.0857 | 0.1118 | 0.0964 | 0.1107 | 0.1015 |
 
-## Best lag distribution
+## Distribution
 - Lag 0: 2 companies
 - Lag 2: 3 companies
 - Lag 3: 2 companies

@@ -19,6 +19,23 @@ pip install prophet statsmodels arch
 
 ### N225ダウンロード（初回のみ）
 
+## 2.2 モデルが参照するデータ区間と評価指標
+
+- **Prophet** (`analysis.py::run_prophet`)
+  - デフォルトでは末尾24ヶ月 (`--prophet-test-h`) をホールドアウト。訓練データで `model.fit()`、テスト区間で `RMSE/MAE` を計算。
+  - 6ヶ月先予測は `model.make_future_dataframe()` で作成し、外生変数には直近12ヶ月の平均値（簡易シナリオ）を適用。
+- **SARIMAX** (`analysis.py::run_sarimax`)
+  - `TimeSeriesSplit` によるウォークフォワード交差検証で複数ラグを比較。平均CV RMSEが最小となるラグが「ベストラグ」。
+  - ベストラグで全期間を再フィットし、`sarimax_fit.png` などの図と in-sample 予測を出力。
+  - 将来6ヶ月分の外生変数は直近値をホールドするシナリオで `res.forecast()` を生成。
+- **experiments.py**
+  - Prophet: ホールドアウト24ヶ月 (デフォルト) で RMSE/MAE を評価。
+  - SARIMAX: `TimeSeriesSplit` で `cv_rmse/cv_mae` を計算。AIC も記録。
+- **sarimax_diagnostics.py**
+  - ベスト構成に対し Ljung-Box (lag6/lag12) と ARCHテストを実施。`--alt-orders` で別の `(p,d,q)` を順次試し、p値が 0.05 以上になる構成が見つかればそちらに差し替え。
+  - `--fit-garch` を指定すると GARCH(1,1) を resid 上にフィットし、AIC/BIC とパラメータを参考情報として出力。
+
+
 ```bash
 python - <<'PY'
 import pandas as pd, numpy as np
@@ -48,6 +65,31 @@ PY
 
 上記で13銘柄が各310行前後あることを確認します。
 
+### 2.1 外生変数を差し替える
+
+`analysis.py`, `experiments.py`, `sarimax_diagnostics.py` はすべて `--exog-*` 系オプションで任意の時系列を外生変数として利用できます。
+
+- `--exog-csv`: CSV パス（既定: `DATA/n225_monthly.csv`）
+- `--exog-date-col`: 日付列名（既定: `Date`）
+- `--exog-value-col`: 値列名（既定: `Close_N225`）
+- `--exog-use-level`: 指定するとログリターンではなく値そのものを使用
+- `--exog-name`: マージ後の列名 (既定: `n225_ret`)
+- `--exog-label`: レポート出力で使用される説明テキスト
+
+サンプルとして `ALT_DATA/macro_index.csv`（日付列 `Month`, 値列 `Macro_Index`）を用意しています。例えば:
+
+```bash
+python analysis.py \
+  --company 明豊エンタープライズ \
+  --exog-csv ALT_DATA/macro_index.csv \
+  --exog-date-col Month \
+  --exog-value-col Macro_Index \
+  --exog-use-level \
+  --exog-name macro_series \
+  --exog-label "シンセティック景気指数" \
+  --outdir outputs/prototype_macro
+```
+
 ---
 
 ## 3. 単一銘柄のプロトタイプ分析
@@ -57,6 +99,8 @@ PY
 ```bash
 python analysis.py --company "明豊エンタープライズ" --outdir outputs/prototype
 ```
+
+> 別の外生変数を使う場合は `--exog-csv`, `--exog-date-col`, `--exog-value-col`, `--exog-use-level`, `--exog-name`, `--exog-label` を適宜セットしてください。
 
 アウトプット例: `prophet_fit.png`, `sarimax_fit.png`, `report.md` 等。
 
@@ -83,6 +127,8 @@ python experiments.py \
   --outdir outputs/experiments_stdN_reglag0
 ```
 
+> `--exog-*` オプションを追加すれば、N225 以外の外生変数でも同じループを実行できます。
+
 ### 4.2 Prophetラグ探索（lag=1〜6）
 
 同じコマンドで `--prophet-reg-lag` を `1,2,3,4,5,6` に変更し、それぞれ `outputs/experiments_stdN_reglag{n}` へ出力してください。SARIMAXラグはlag=1のみで十分です。
@@ -97,25 +143,33 @@ python experiments.py ... --prophet-reg-lag 3 --sarimax-lags 1 --outdir outputs/
 python - <<'PY'
 import pandas as pd
 from pathlib import Path
+
 lag_dirs = {lag: Path(f'outputs/experiments_stdN_reglag{lag}') for lag in range(7)}
 frames = {}
 for lag, path in lag_dirs.items():
     df = pd.read_csv(path/'prophet_experiments.csv')
     idx = df.groupby('company')['test_rmse'].idxmin()
-    frames[lag] = df.loc[idx, ['company','test_rmse','n225_coef']].set_index('company')
+    frame = df.loc[idx, ['company','test_rmse']]
+    if 'exog_coef' in df.columns:
+        frame['exog_coef'] = df.loc[idx]['exog_coef'].values
+    else:
+        frame['exog_coef'] = df.loc[idx]['n225_coef'].values
+    frames[lag] = frame.set_index('company')
+
 rows = []
 for comp in frames[0].index:
     record = {'company': comp}
     best_rmse = float('inf')
     best_lag = None
-    for lag, df in frames.items():
-        rmse = df.loc[comp,'test_rmse']
+    for lag, frame in frames.items():
+        rmse = frame.loc[comp,'test_rmse']
         record[f'rmse_lag{lag}'] = rmse
         if rmse < best_rmse:
             best_rmse = rmse
             best_lag = lag
     record['best_lag'] = best_lag
     rows.append(record)
+
 pd.DataFrame(rows).to_csv('outputs/prophet_lag_summary.csv', index=False)
 PY
 ```

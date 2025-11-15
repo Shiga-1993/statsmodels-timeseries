@@ -60,11 +60,11 @@ def evaluate_prophet(
     params: Dict[str, float],
     test_horizon: int,
     reg_lag: int,
+    exog_col: str,
 ) -> Dict[str, float]:
     data = df.reset_index().rename(columns={"Date": "ds"})
-    data = data[["ds", "y", "n225_ret"]]
-    data["n225_reg"] = data["n225_ret"].shift(reg_lag)
-    data = data.dropna(subset=["n225_reg"])
+    data["reg_input"] = data[exog_col].shift(reg_lag)
+    data = data.dropna(subset=["reg_input"])
 
     if len(data) <= test_horizon + 24:
         raise ValueError("Not enough observations for Prophet split.")
@@ -81,29 +81,29 @@ def evaluate_prophet(
         changepoint_prior_scale=params["changepoint_prior_scale"],
         seasonality_prior_scale=params["seasonality_prior_scale"],
     )
-    model.add_regressor("n225_reg")
+    model.add_regressor("reg_input")
     model.fit(train)
 
-    train_pred = model.predict(train[["ds", "n225_reg"]])
-    test_pred = model.predict(test[["ds", "n225_reg"]])
+    train_pred = model.predict(train[["ds", "reg_input"]])
+    test_pred = model.predict(test[["ds", "reg_input"]])
     coeffs = regressor_coefficients(model)
-    coef = float(coeffs.loc[coeffs["regressor"] == "n225_reg", "coef"].iloc[0])
+    coef = float(coeffs.loc[coeffs["regressor"] == "reg_input", "coef"].iloc[0])
 
     result = {
         "train_rmse": rmse(train["y"], train_pred["yhat"]),
         "train_mae": mae(train["y"], train_pred["yhat"]),
         "test_rmse": rmse(test["y"], test_pred["yhat"]),
         "test_mae": mae(test["y"], test_pred["yhat"]),
-        "n225_coef": coef,
+        "exog_coef": coef,
         "params": params,
         "reg_lag": reg_lag,
     }
     return result
 
 
-def make_lagged(df: pd.DataFrame, lag: int) -> pd.DataFrame:
-    lagged = pd.concat([df["y"], df["n225_ret"].shift(lag)], axis=1).dropna()
-    lagged.columns = ["y", "n225_lag"]
+def make_lagged(df: pd.DataFrame, lag: int, exog_col: str) -> pd.DataFrame:
+    lagged = pd.concat([df["y"], df[exog_col].shift(lag)], axis=1).dropna()
+    lagged.columns = ["y", "exog_lag"]
     return lagged
 
 
@@ -113,8 +113,9 @@ def evaluate_sarimax(
     lag: int,
     n_splits: int,
     seasonal_order: Tuple[int, int, int, int],
+    exog_col: str,
 ) -> Dict[str, float]:
-    data = make_lagged(df, lag)
+    data = make_lagged(df, lag, exog_col)
     if len(data) < max(60, (n_splits + 1) * 10):
         raise ValueError("Not enough observations for SARIMAX split.")
 
@@ -122,7 +123,7 @@ def evaluate_sarimax(
     tscv = TimeSeriesSplit(n_splits=splits)
     rows = []
     values = data["y"].values.astype(float)
-    exog_values = data[["n225_lag"]].values.astype(float)
+    exog_values = data[["exog_lag"]].values.astype(float)
 
     for fold, (train_idx, test_idx) in enumerate(tscv.split(values), 1):
         y_tr, y_te = values[train_idx], values[test_idx]
@@ -151,7 +152,7 @@ def evaluate_sarimax(
         data["y"],
         order=order,
         seasonal_order=seasonal_order,
-        exog=data[["n225_lag"]],
+        exog=data[["exog_lag"]],
         enforce_stationarity=False,
         enforce_invertibility=False,
     ).fit(disp=False)
@@ -163,8 +164,8 @@ def evaluate_sarimax(
         "cv_aic": cv_df["aic"].mean(),
         "insample_rmse": rmse(data["y"], fitted),
         "insample_mae": mae(data["y"], fitted),
-        "n225_coef": float(final_model.params.get("n225_lag", np.nan)),
-        "n225_pvalue": float(final_model.pvalues.get("n225_lag", np.nan)),
+        "exog_coef": float(final_model.params.get("exog_lag", np.nan)),
+        "exog_pvalue": float(final_model.pvalues.get("exog_lag", np.nan)),
         "lag": lag,
         "order": order,
         "seasonal_order": seasonal_order,
@@ -191,7 +192,12 @@ def parse_order(text: str) -> Tuple[int, int, int]:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Parameter sweeps for Prophet & SARIMAX.")
     parser.add_argument("--stock-csv", type=Path, default=Path("DATA/stock_prices_monthly.csv"))
-    parser.add_argument("--n225-csv", type=Path, default=Path("DATA/n225_monthly.csv"))
+    parser.add_argument("--exog-csv", type=Path, default=Path("DATA/n225_monthly.csv"))
+    parser.add_argument("--n225-csv", dest="exog_csv", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--exog-date-col", type=str, default="Date")
+    parser.add_argument("--exog-value-col", type=str, default="Close_N225")
+    parser.add_argument("--exog-use-level", action="store_true", help="Use raw values instead of log returns for exogenous series.")
+    parser.add_argument("--exog-name", type=str, default="n225_ret")
     parser.add_argument("--companies", nargs="+", default=DEFAULT_COMPANIES)
     parser.add_argument("--min-obs", type=int, default=150, help="Minimum observations required per company.")
     parser.add_argument("--prophet-test-h", type=int, default=24, help="Holdout horizon for Prophet evaluation.")
@@ -229,13 +235,23 @@ def main() -> None:
     ]
 
     seasonal_orders = [tuple(int(x) for x in val.split(",")) for val in args.sarimax_seasonal]
+    exog_col = args.exog_name
 
     for company in args.companies:
         try:
-            df = prepare_dataset(args.stock_csv, args.n225_csv, company, use_log_return=not args.level_target)
+            df = prepare_dataset(
+                args.stock_csv,
+                args.exog_csv,
+                company,
+                use_log_return=not args.level_target,
+                exog_date_col=args.exog_date_col,
+                exog_value_col=args.exog_value_col,
+                exog_log_return=not args.exog_use_level,
+                exog_alias=exog_col,
+            )
             std_target = args.standardize or args.standardize_target
-            std_n225 = args.standardize or args.standardize_n225
-            if std_target or std_n225:
+            std_exog = args.standardize or args.standardize_n225
+            if std_target or std_exog:
                 df = df.copy()
                 if std_target:
                     mean = df["y"].mean()
@@ -243,12 +259,12 @@ def main() -> None:
                     if std == 0 or np.isnan(std):
                         raise ValueError("Target std=0; cannot standardize.")
                     df["y"] = (df["y"] - mean) / std
-                if std_n225:
-                    mean = df["n225_ret"].mean()
-                    std = df["n225_ret"].std()
+                if std_exog:
+                    mean = df[exog_col].mean()
+                    std = df[exog_col].std()
                     if std == 0 or np.isnan(std):
-                        raise ValueError("N225 std=0; cannot standardize.")
-                    df["n225_ret"] = (df["n225_ret"] - mean) / std
+                        raise ValueError("Exogenous series std=0; cannot standardize.")
+                    df[exog_col] = (df[exog_col] - mean) / std
         except Exception as exc:
             logs.append({"company": company, "stage": "load", "error": str(exc)})
             continue
@@ -271,6 +287,7 @@ def main() -> None:
                     params,
                     test_horizon=args.prophet_test_h,
                     reg_lag=args.prophet_reg_lag,
+                    exog_col=exog_col,
                 )
                 row = {
                     "company": company,
@@ -300,6 +317,7 @@ def main() -> None:
                     lag,
                     n_splits=args.sarimax_splits,
                     seasonal_order=seas,
+                    exog_col=exog_col,
                 )
                 row = {
                     "company": company,

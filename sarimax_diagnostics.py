@@ -56,7 +56,7 @@ def load_best_configs(exp_dir: Path, companies: Iterable[str] | None = None) -> 
     return pd.DataFrame(grouped)
 
 
-def standardize_columns(df: pd.DataFrame, target: bool, n225: bool) -> pd.DataFrame:
+def standardize_columns(df: pd.DataFrame, target: bool, exog_col: str, standardize_exog: bool) -> pd.DataFrame:
     df = df.copy()
     if target:
         mean = df["y"].mean()
@@ -64,12 +64,12 @@ def standardize_columns(df: pd.DataFrame, target: bool, n225: bool) -> pd.DataFr
         if std == 0 or np.isnan(std):
             raise ValueError("Target std=0; cannot standardize.")
         df["y"] = (df["y"] - mean) / std
-    if n225:
-        mean = df["n225_ret"].mean()
-        std = df["n225_ret"].std()
+    if standardize_exog:
+        mean = df[exog_col].mean()
+        std = df[exog_col].std()
         if std == 0 or np.isnan(std):
-            raise ValueError("N225 std=0; cannot standardize.")
-        df["n225_ret"] = (df["n225_ret"] - mean) / std
+            raise ValueError("Exogenous std=0; cannot standardize.")
+        df[exog_col] = (df[exog_col] - mean) / std
     return df
 
 
@@ -79,14 +79,15 @@ def run_diagnostics(
     seasonal_order: Tuple[int, int, int, int],
     lag: int,
     ljung_lags: Iterable[int],
+    exog_col: str,
     fit_garch: bool,
 ) -> Tuple[float, dict]:
-    lagged = make_lagged(df, lag)
+    lagged = make_lagged(df, lag, exog_col)
     model = SARIMAX(
         lagged["y"],
         order=order,
         seasonal_order=seasonal_order,
-        exog=lagged[["n225_lag"]],
+        exog=lagged[["exog_lag"]],
         enforce_stationarity=False,
         enforce_invertibility=False,
     )
@@ -126,7 +127,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run SARIMAX residual diagnostics for experiment best configs.")
     parser.add_argument("--exp-dir", type=Path, required=True, help="Experiment directory containing sarimax_experiments.csv")
     parser.add_argument("--stock-csv", type=Path, default=Path("DATA/stock_prices_monthly.csv"))
-    parser.add_argument("--n225-csv", type=Path, default=Path("DATA/n225_monthly.csv"))
+    parser.add_argument("--exog-csv", type=Path, default=Path("DATA/n225_monthly.csv"))
+    parser.add_argument("--n225-csv", dest="exog_csv", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--exog-date-col", type=str, default="Date")
+    parser.add_argument("--exog-value-col", type=str, default="Close_N225")
+    parser.add_argument("--exog-use-level", action="store_true", help="Use raw exogenous values instead of log returns.")
+    parser.add_argument("--exog-name", type=str, default="n225_ret")
     parser.add_argument("--companies", nargs="+", default=None)
     parser.add_argument("--min-obs", type=int, default=150)
     parser.add_argument("--standardize", action="store_true")
@@ -144,18 +150,28 @@ def main() -> None:
     outdir.mkdir(parents=True, exist_ok=True)
 
     std_target = args.standardize or args.standardize_target
-    std_n225 = args.standardize or args.standardize_n225
+    std_exog = args.standardize or args.standardize_n225
     alt_orders = [parse_order(text) for text in args.alt_orders]
+    exog_col = args.exog_name
 
     best = load_best_configs(args.exp_dir, args.companies)
     records = []
 
     for _, row in best.iterrows():
         company = row["company"]
-        df = prepare_dataset(args.stock_csv, args.n225_csv, company, use_log_return=not args.level_target)
+        df = prepare_dataset(
+            args.stock_csv,
+            args.exog_csv,
+            company,
+            use_log_return=not args.level_target,
+            exog_date_col=args.exog_date_col,
+            exog_value_col=args.exog_value_col,
+            exog_log_return=not args.exog_use_level,
+            exog_alias=exog_col,
+        )
         if len(df) < args.min_obs:
             continue
-        df = standardize_columns(df, std_target, std_n225)
+        df = standardize_columns(df, std_target, exog_col, std_exog)
         order = parse_order(row["order"])
         seasonal_order = parse_seasonal(row.get("seasonal_order", "(0, 0, 0, 0)"))
         res, diag = run_diagnostics(
@@ -164,6 +180,7 @@ def main() -> None:
             seasonal_order=seasonal_order,
             lag=int(row["lag"]),
             ljung_lags=args.ljung_lags,
+            exog_col=exog_col,
             fit_garch=args.fit_garch,
         )
         refit_order = None
@@ -176,6 +193,7 @@ def main() -> None:
                     seasonal_order=seasonal_order,
                     lag=int(row["lag"]),
                     ljung_lags=args.ljung_lags,
+                    exog_col=exog_col,
                     fit_garch=args.fit_garch,
                 )
                 if diagnostics_pass(diag_alt, args.significance, args.ljung_lags):

@@ -1,0 +1,10 @@
+{
+  "prophet_trials": 0,
+  "sarimax_trials": 8,
+  "companies": [
+    "明豊エンタープライズ",
+    "明和地所",
+    "ゴールドクレスト"
+  ],
+  "outdir": "outputs/experiments_macro"
+}

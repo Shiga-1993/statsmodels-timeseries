@@ -72,35 +72,55 @@ def load_stock_series(csv_path: Path, company: str, use_log_return: bool) -> pd.
     return df
 
 
-def load_n225_series(n225_path: Path) -> pd.Series:
-    df = pd.read_csv(n225_path)
-    df["Date"] = pd.to_datetime(df["Date"])
-    df = df.sort_values("Date").set_index("Date")
-    series = pd.to_numeric(df["Log_Return"], errors="coerce")
-    series = series.asfreq("MS").dropna()
-    return series.rename("n225_ret")
+def load_exog_series(
+    csv_path: Path,
+    date_col: str,
+    value_col: str,
+    use_log_return: bool,
+    alias: str,
+) -> pd.Series:
+    df = pd.read_csv(csv_path)
+    df[date_col] = pd.to_datetime(df[date_col])
+    df = df.sort_values(date_col).set_index(date_col)
+    values = pd.to_numeric(df[value_col], errors="coerce")
+    if use_log_return:
+        values = np.log(values / values.shift(1))
+    series = values.dropna().asfreq("MS")
+    return series.rename(alias)
 
 
-def prepare_dataset(stock_csv: Path, n225_csv: Path, company: str, use_log_return: bool) -> pd.DataFrame:
+def prepare_dataset(
+    stock_csv: Path,
+    exog_csv: Path,
+    company: str,
+    use_log_return: bool,
+    exog_date_col: str,
+    exog_value_col: str,
+    exog_log_return: bool,
+    exog_alias: str,
+) -> pd.DataFrame:
     stock = load_stock_series(stock_csv, company, use_log_return)
-    n225 = load_n225_series(n225_csv)
-    df = stock.join(n225, how="inner").dropna()
+    exog = load_exog_series(exog_csv, exog_date_col, exog_value_col, exog_log_return, exog_alias)
+    df = stock.join(exog, how="inner").dropna()
     return df
 
 
-def run_prophet(df: pd.DataFrame, outdir: Path, horizon: int = 6) -> Tuple[Dict[str, float], pd.DataFrame]:
+def run_prophet(
+    df: pd.DataFrame,
+    outdir: Path,
+    exog_col: str,
+    horizon: int = 6,
+) -> Tuple[Dict[str, float], pd.DataFrame]:
     set_plot_style()
-    df_prophet = (
-        df.reset_index()
-        .rename(columns={"Date": "ds", "y": "y", "n225_ret": "n225_ret"})
-        [["ds", "y", "n225_ret"]]
-    )
+    df_prophet = df.reset_index()
+    idx_col = df_prophet.columns[0]
+    df_prophet = df_prophet.rename(columns={idx_col: "ds"})[["ds", "y", exog_col]]
 
     model = Prophet(weekly_seasonality=False, daily_seasonality=False, yearly_seasonality=True)
-    model.add_regressor("n225_ret")
+    model.add_regressor(exog_col)
     model.fit(df_prophet)
 
-    in_sample = model.predict(df_prophet[["ds", "n225_ret"]])
+    in_sample = model.predict(df_prophet[["ds", exog_col]])
     y_true = df_prophet["y"].to_numpy()
     y_hat = in_sample["yhat"].to_numpy()
     rmse = float(np.sqrt(mean_squared_error(y_true, y_hat)))
@@ -121,7 +141,7 @@ def run_prophet(df: pd.DataFrame, outdir: Path, horizon: int = 6) -> Tuple[Dict[
         {
             "ds": df_prophet["ds"],
             "y": df_prophet["y"],
-            "n225_ret": df_prophet["n225_ret"],
+            exog_col: df_prophet[exog_col],
             "yhat": in_sample["yhat"],
             "yhat_lower": in_sample["yhat_lower"],
             "yhat_upper": in_sample["yhat_upper"],
@@ -131,11 +151,11 @@ def run_prophet(df: pd.DataFrame, outdir: Path, horizon: int = 6) -> Tuple[Dict[
 
     last_date = df_prophet["ds"].max()
     future_dates = pd.date_range(last_date + pd.offsets.MonthBegin(1), periods=horizon, freq="MS")
-    avg_n225 = df_prophet["n225_ret"].tail(12).mean()
+    avg_exog = df_prophet[exog_col].tail(12).mean()
     future = pd.DataFrame(
         {
             "ds": future_dates,
-            "n225_ret": np.repeat(avg_n225, len(future_dates)),
+            exog_col: np.repeat(avg_exog, len(future_dates)),
         }
     )
     future_fc = model.predict(future)
@@ -145,7 +165,7 @@ def run_prophet(df: pd.DataFrame, outdir: Path, horizon: int = 6) -> Tuple[Dict[
     metrics = {
         "rmse": rmse,
         "mae": mae,
-        "n225_coef": float(coeffs.loc[coeffs["regressor"] == "n225_ret", "coef"].iloc[0]),
+        "exog_coef": float(coeffs.loc[coeffs["regressor"] == exog_col, "coef"].iloc[0]),
     }
     return metrics, future_fc_out
 
@@ -179,6 +199,7 @@ def ts_cross_val(y: pd.Series, X: pd.DataFrame, order: Tuple[int, int, int], n_s
 def run_sarimax(
     df: pd.DataFrame,
     outdir: Path,
+    exog_col: str,
     lags: Iterable[int] = (0, 1, 3, 6),
     order: Tuple[int, int, int] = (1, 0, 1),
     n_splits: int = 5,
@@ -186,11 +207,11 @@ def run_sarimax(
     set_plot_style()
     metrics_by_lag: Dict[int, pd.DataFrame] = {}
     for lag in lags:
-        data = pd.concat([df["y"], df["n225_ret"].shift(lag)], axis=1).dropna()
-        data.columns = ["y", "n225_lag"]
+        data = pd.concat([df["y"], df[exog_col].shift(lag)], axis=1).dropna()
+        data.columns = ["y", "exog_lag"]
         if len(data) < 40:
             continue
-        cv = ts_cross_val(data["y"], data[["n225_lag"]], order, n_splits)
+        cv = ts_cross_val(data["y"], data[["exog_lag"]], order, n_splits)
         if not cv.empty:
             cv["lag"] = lag
             metrics_by_lag[lag] = cv
@@ -202,10 +223,10 @@ def run_sarimax(
     cv_all.to_csv(outdir / "sarimax_cv_metrics.csv", index=False)
     lag_best = min(metrics_by_lag, key=lambda L: metrics_by_lag[L]["rmse"].mean())
 
-    final_df = pd.concat([df["y"], df["n225_ret"].shift(lag_best)], axis=1).dropna()
-    final_df.columns = ["y", "n225_lag"]
+    final_df = pd.concat([df["y"], df[exog_col].shift(lag_best)], axis=1).dropna()
+    final_df.columns = ["y", "exog_lag"]
     y_final = final_df["y"]
-    X_final = final_df[["n225_lag"]]
+    X_final = final_df[["exog_lag"]]
 
     model = SARIMAX(
         y_final,
@@ -254,7 +275,7 @@ def run_sarimax(
         "rmse": rmse,
         "mae": mae,
         "best_lag": lag_best,
-        "coef_n225": float(res.params.get("n225_lag", np.nan)),
+        "exog_coef": float(res.params.get("exog_lag", np.nan)),
     }
     return metrics
 
@@ -266,6 +287,7 @@ def build_report(
     prophet_metrics: Dict[str, float],
     sarimax_metrics: Dict[str, float],
     prophet_future: pd.DataFrame,
+    exog_label: str,
 ) -> None:
     report_path = outdir / "report.md"
     period_start = df.index.min().date()
@@ -283,14 +305,14 @@ def build_report(
         "## データ整形",
         f"- 対象期間: {period_start} ～ {period_end}（{n_obs} ヶ月）",
         "- 目的変数: 月次ログリターン (株価)",
-        "- 外生変数: 日経平均 (N225) 月次ログリターン",
+        f"- 外生変数: {exog_label}",
         f"- ログリターン平均 {mean_ret:.4f}, 標準偏差 {std_ret:.4f}",
         "",
         "## Prophet",
         f"- RMSE: {prophet_metrics['rmse']:.4f}",
         f"- MAE: {prophet_metrics['mae']:.4f}",
-        f"- N225 係数推定: {prophet_metrics['n225_coef']:.4f}",
-        f"- 直近12ヶ月平均のN225リターンを入力した6ヶ月予測: 初月 {future_head['ds'].date()} の期待値 {future_head['yhat']:.4f}, "
+        f"- 外生変数係数推定: {prophet_metrics['exog_coef']:.4f}",
+        f"- 直近12ヶ月平均の外生変数を入力した6ヶ月予測: 初月 {future_head['ds'].date()} の期待値 {future_head['yhat']:.4f}, "
         f"最終月 {future_tail['ds'].date()} の期待値 {future_tail['yhat']:.4f}",
         "- 図: `prophet_fit.png`, `prophet_components.png`",
         "",
@@ -298,20 +320,26 @@ def build_report(
         f"- RMSE: {sarimax_metrics['rmse']:.4f}",
         f"- MAE: {sarimax_metrics['mae']:.4f}",
         f"- CVベストラグ（月）: {sarimax_metrics['best_lag']}",
-        f"- N225 係数推定: {sarimax_metrics['coef_n225']:.4f}",
+        f"- 外生変数係数推定: {sarimax_metrics['exog_coef']:.4f}",
         "- 図: `sarimax_fit.png`, `sarimax_lag_rmse.png`, `sarimax_residual_acf.png`",
         "",
         "## 考察メモ",
-        "1. Prophet と SARIMAX の双方で N225 ログリターンの係数がプラスである場合、N225 上昇が当該銘柄の翌月ログリターンを押し上げる傾向。",
+        "1. Prophet と SARIMAX の双方で外生変数の係数がプラスである場合、当該指標の上昇が翌月ログリターンを押し上げる傾向。",
         "2. 係数の大きさや統計的有意性の比較で、外部要因の説明力をレポート本文で補足してください。",
     ]
     report_path.write_text("\n".join(lines))
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Prophet & SARIMAX prototype for stock vs N225.")
+    parser = argparse.ArgumentParser(description="Prophet & SARIMAX prototype for stock with external regressor.")
     parser.add_argument("--stock-csv", type=Path, default=Path("DATA/stock_prices_monthly.csv"))
-    parser.add_argument("--n225-csv", type=Path, default=Path("DATA/n225_monthly.csv"))
+    parser.add_argument("--exog-csv", type=Path, default=Path("DATA/n225_monthly.csv"))
+    parser.add_argument("--n225-csv", dest="exog_csv", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--exog-date-col", type=str, default="Date")
+    parser.add_argument("--exog-value-col", type=str, default="Close_N225")
+    parser.add_argument("--exog-use-level", action="store_true", help="Use raw values instead of log returns for exogenous series.")
+    parser.add_argument("--exog-name", type=str, default="n225_ret", help="Column name alias for merged dataset.")
+    parser.add_argument("--exog-label", type=str, default="日経平均 (N225) 月次ログリターン", help="Description used in reports.")
     parser.add_argument("--company", type=str, default="明豊エンタープライズ")
     parser.add_argument(
         "--level-target",
@@ -326,12 +354,21 @@ def main() -> None:
     outdir = args.outdir
     outdir.mkdir(parents=True, exist_ok=True)
 
-    df = prepare_dataset(args.stock_csv, args.n225_csv, args.company, args.use_log_return)
+    df = prepare_dataset(
+        args.stock_csv,
+        args.exog_csv,
+        args.company,
+        args.use_log_return,
+        args.exog_date_col,
+        args.exog_value_col,
+        not args.exog_use_level,
+        args.exog_name,
+    )
     df.to_csv(outdir / "prepared_dataset.csv")
 
-    prophet_metrics, prophet_future = run_prophet(df, outdir)
-    sarimax_metrics = run_sarimax(df, outdir)
-    build_report(outdir, args.company, df, prophet_metrics, sarimax_metrics, prophet_future)
+    prophet_metrics, prophet_future = run_prophet(df, outdir, args.exog_name)
+    sarimax_metrics = run_sarimax(df, outdir, args.exog_name)
+    build_report(outdir, args.company, df, prophet_metrics, sarimax_metrics, prophet_future, args.exog_label)
 
     summary = {
         "company": args.company,
