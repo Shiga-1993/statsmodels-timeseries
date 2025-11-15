@@ -39,8 +39,15 @@
      `python experiments.py --companies ... --prophet-reg-lag {0|1|...} --sarimax-lags "0 1 2 3 6 9 12" --outdir outputs/...`
    - 低データ銘柄を含める場合は `--min-obs` を調整。
 3. **レポート資源**
-   - `outputs/experiments_all_summary.md`: 現時点のベスト設定表および所見。
-   - 各 `outputs/experiments*/` ディレクトリ: 生CSVと `summary.json`、必要に応じて `experiment_logs.csv`.
+- `outputs/experiments_all_summary.md`: 現時点のベスト設定表および所見。
+- 各 `outputs/experiments*/` ディレクトリ: 生CSVと `summary.json`、必要に応じて `experiment_logs.csv`.
+
+### Prototype Runs (単体分析まとめ)
+- `outputs/prototype`: 初期ベースライン。N225ログリターンを外生変数に設定し、Prophet/SARIMAXとも RMSE ≈0.178。SARIMAXのCVベストラグは1で、N225係数は≈1.34と強い正の影響を確認。
+- `outputs/prototype_default`: 最新 `analysis.py` で再実行したベースライン。Prophet RMSEが ≈0.186（スケーリング変更の影響）、SARIMAXは依然 RMSE ≈0.178・lag=1。刷新後も挙動が一致することを確認。
+- `outputs/prototype_default_explicit`: `--exog-use-level` でN225水準を外生変数に投入。RMSEは変わらず（Prophet/SARIMAXとも baseline と同水準）で、モデルが内部で差分を取り N225レベルを実質的にリターンへ変換していることを示唆。
+- `outputs/prototype_macro`: `ALT_DATA/macro_index.csv` を外生変数に置換。RMSEが僅かに悪化し、macro指標ではN225ほどの説明力が得られない。現状ではN225ログリターンが最も安定的な外生変数。
+- 以上から「SARIMAX + N225ログリターン (lag=1)」が単一銘柄分析のデフォルト構成として妥当。Prophetのラグは `experiments_stdN_reglag*` を使って別途比較するのが良い。
 
 ## 今後のTODO案
 - Prophetの入力を標準化/追加共変量で再評価 (`--level-target` フラグも検証)。

@@ -1,6 +1,6 @@
 # StatsModels Timeseries Analysis Manual
 
-このマニュアルは、N225を外部変数としたProphet / SARIMAXの試行錯誤を再現するための手順をまとめたものです。すべて `python` コマンドを想定し、パスはリポジトリルートからの相対パスです。
+このマニュアルは、N225を外部変数としたProphet / SARIMAXの試行錯誤を再現するための手順をまとめたものだ。すべて `python` コマンドを想定し、パスはリポジトリルートからの相対パスで記載する。
 
 ---
 
@@ -10,8 +10,8 @@
 pip install prophet statsmodels arch
 ```
 
-- `prophet` / `statsmodels` は既に導入済みですが、新規環境では上記でインストールください。
-- 残差診断で GARCH を使う場合は `pip install arch` が必要です。
+- `prophet` / `statsmodels` は既に導入済みだが、新規環境では上記コマンドでインストールしておく。
+- 残差診断で GARCH を使う場合は `pip install arch` が必要となる。
 
 ---
 
@@ -63,11 +63,11 @@ print(df['Company'].value_counts())
 PY
 ```
 
-上記で13銘柄が各310行前後あることを確認します。
+上記で13銘柄が各310行前後あることを確認する。
 
 ### 2.1 外生変数を差し替える
 
-`analysis.py`, `experiments.py`, `sarimax_diagnostics.py` はすべて `--exog-*` 系オプションで任意の時系列を外生変数として利用できます。
+`analysis.py`, `experiments.py`, `sarimax_diagnostics.py` はすべて `--exog-*` 系オプションで任意の時系列を外生変数として利用できる。
 
 - `--exog-csv`: CSV パス（既定: `DATA/n225_monthly.csv`）
 - `--exog-date-col`: 日付列名（既定: `Date`）
@@ -76,7 +76,7 @@ PY
 - `--exog-name`: マージ後の列名 (既定: `n225_ret`)
 - `--exog-label`: レポート出力で使用される説明テキスト
 
-サンプルとして `ALT_DATA/macro_index.csv`（日付列 `Month`, 値列 `Macro_Index`）を用意しています。例えば:
+サンプルとして `ALT_DATA/macro_index.csv`（日付列 `Month`, 値列 `Macro_Index`）を用意している。例えば:
 
 ```bash
 python analysis.py \
@@ -94,13 +94,13 @@ python analysis.py \
 
 ## 3. 単一銘柄のプロトタイプ分析
 
-`analysis.py` は Prophet + SARIMAX を1銘柄単位で実行し、図やCSVを `outputs/prototype/` に出力します。
+`analysis.py` は Prophet + SARIMAX を1銘柄単位で実行し、図やCSVを `outputs/prototype/` に出力する。
 
 ```bash
 python analysis.py --company "明豊エンタープライズ" --outdir outputs/prototype
 ```
 
-> 別の外生変数を使う場合は `--exog-csv`, `--exog-date-col`, `--exog-value-col`, `--exog-use-level`, `--exog-name`, `--exog-label` を適宜セットしてください。
+> 別の外生変数を使う場合は `--exog-csv`, `--exog-date-col`, `--exog-value-col`, `--exog-use-level`, `--exog-name`, `--exog-label` を適宜設定する。
 
 アウトプット例: `prophet_fit.png`, `sarimax_fit.png`, `report.md` 等。
 
@@ -127,11 +127,11 @@ python experiments.py \
   --outdir outputs/experiments_stdN_reglag0
 ```
 
-> `--exog-*` オプションを追加すれば、N225 以外の外生変数でも同じループを実行できます。
+> `--exog-*` オプションを追加すれば、N225 以外の外生変数でも同じループを実行できる。
 
 ### 4.2 Prophetラグ探索（lag=1〜6）
 
-同じコマンドで `--prophet-reg-lag` を `1,2,3,4,5,6` に変更し、それぞれ `outputs/experiments_stdN_reglag{n}` へ出力してください。SARIMAXラグはlag=1のみで十分です。
+同じコマンドで `--prophet-reg-lag` を `1,2,3,4,5,6` に変更し、それぞれ `outputs/experiments_stdN_reglag{n}` へ出力する。SARIMAXラグはlag=1のみで十分だ。
 
 例:
 ```bash
@@ -174,7 +174,7 @@ pd.DataFrame(rows).to_csv('outputs/prophet_lag_summary.csv', index=False)
 PY
 ```
 
-`outputs/prophet_lag_summary.md` に結果を出力しておけば後で参照しやすくなります。
+`outputs/prophet_lag_summary.md` に結果を出力しておけば後で参照しやすい。
 
 ---
 
@@ -199,7 +199,7 @@ python sarimax_diagnostics.py \
 
 ### 5.2 収束しない場合の再試行
 
-`--alt-orders` リストに `(p,d,q)` を追加すると、診断失敗時に順番に再フィットします。
+`--alt-orders` リストに `(p,d,q)` を追加すると、診断失敗時に順番に再フィットする。
 
 ---
 
@@ -233,13 +233,13 @@ python sarimax_diagnostics.py \
 - N225のみZスコア化すると係数解釈が容易で、性能影響は軽微（`outputs/experiments_std_n225/summary.md`）。
 - Seasonality や価格レベルを直接予測する案は大幅劣化（`experiments_seasonal/`, `experiments_level_stdN225/`）。
 
-これらを踏まえ、新しい銘柄への適用や追加要件の際は上記マニュアルに沿って実験を再現してください。
+これらを踏まえ、新しい銘柄への適用や追加要件の際は上記マニュアルに沿って実験を再現してほしい。
 
 ---
 
 ## 9. ダッシュボード生成 (`visualize_results.py`)
 
-`analysis.py` を実行したディレクトリには `prepared_dataset.csv`, `prophet_in_sample.csv`, `sarimax_in_sample.csv` 等が生成されます。これらをまとめて可視化するには以下を使用します。
+`analysis.py` を実行したディレクトリには `prepared_dataset.csv`, `prophet_in_sample.csv`, `sarimax_in_sample.csv` 等が生成される。これらをまとめて可視化するには以下を使用する。
 
 ```bash
 python visualize_results.py \
@@ -256,14 +256,14 @@ python visualize_results.py \
   3. 両モデルの残差分布
   4. 目的変数と外生変数のローリング相関
   5. クロス相関 (`y` vs 外生変数ラグ。`--max-lag` まで棒グラフで表示、CVベストラグを破線でマーキング)
-  6. SARIMAX ラグ別 CV RMSE（`analysis.py::run_sarimax` の CV 結果。Prophet ではなく SARIMAX のラグ比較）
-  7. RMSE/MAE 等のサマリーテキスト
-  8. Lag & Coefficient Insights（Prophet β / SARIMAX β / `corr(y, exog lag)` を横棒グラフ化。SARIMAX には p 値と標準誤差、Prophet には係数区間を表示）
+  6. RMSE/MAE 等のサマリーテキスト（`analysis.py` のベスト設定での指標）
+  7. Lag & Coefficient Insights（Prophet β / SARIMAX β / `corr(y, exog lag)` をテキストで列挙し、信頼区間やp値、CV差の小ささメモを表示）
 
-`--show` を指定すると PNG を保存したあとにウィンドウ表示します。複数ディレクトリ（例: N225 と macro index の比較）に対して実行すると、レポートやプレゼン資料用の図が揃います。
+`--show` を指定すると PNG を保存したあとにウィンドウ表示する。複数ディレクトリ（例: N225 と macro index の比較）に対して実行すると、レポートやプレゼン資料用の図が揃う。
 
 **読み解きの目安**
-- クロス相関パネル: 一般的な経験則で |corr|≲0.2 は弱、0.2〜0.4 (例: 0.3) は中程度、0.4 以上で強めのリンクと解釈できます。棒の高さと SARIMAX CV ベストラグ（破線）が一致しているかを見ると、「なぜそのラグが選ばれたか」が腹落ちします。
-- Lag & Coefficient Insights: 横棒グラフとして Prophet β, SARIMAX β, `corr(y, exog lag)` を並べているので、符号の違いや統計的有意性を一目で判断できます（SARIMAX には p 値・SE、Prophet には係数区間）。corr が中程度でも p≪0.05 ならモデルでは十分効いている、といった整理ができます。図は優劣を決めるものではなく、モデル係数と生相関の調和/乖離を把握する用途です。
-- `corr(y, exog lag k)` は目的変数と `k` ヶ月遅行させた外生変数との相関 (`corr(y_t, exog_{t-k})`) を意味します。
-- タイトルに “β=model coefficient, corr=plain corr(y, exog lag)” と記されている通り、corr は生の相関値です。これが Prophet/SARIMAX の β より大きい時は「観測上は強い結び付きだが、モデル係数は（他要因や正則化により）控えめ」という状況、逆に β が大きい時はモデルがその影響を強く利用している状況と読み取れます。
+- クロス相関パネル: 一般的な経験則で |corr|≲0.2 は弱、0.2〜0.4 (例: 0.3) は中程度、0.4 以上で強めのリンクと解釈できる。棒の高さと SARIMAX CV ベストラグ（破線）が一致しているかを確認すると、「なぜそのラグが選ばれたか」が腹落ちする。
+- Lag & Coefficient Insights: テキスト形式で Prophet β, SARIMAX β, `corr(y, exog lag)` を並べ、信頼区間や p 値、CV 差の小ささをまとめている。corr が中程度でも p≪0.05 ならモデルでは十分効いている、といった整理が可能だ。図は優劣を決めるものではなく、モデル係数と生相関の調和/乖離を把握する用途である。
+- `corr(y, exog lag k)` は目的変数と `k` ヶ月遅行させた外生変数との相関 (`corr(y_t, exog_{t-k})`) を指す。
+- タイトルに “β=model coefficient, corr=plain corr(y, exog lag)” と記されている通り、corr は生の相関値である。これが Prophet/SARIMAX の β より大きい時は「観測上は強い結び付きだが、モデル係数は（他要因や正則化により）控えめ」という状況、逆に β が大きい時はモデルがその影響を強く利用している状況と読み取れる。
+- SARIMAX のベストラグとクロス相関のピークが一致しない場合は、生相関が最大でもモデル全体では別ラグが残差を整えるか、ピーク差が僅少でどのラグでも CV RMSE が同程度という状況を意味する。生相関とモデル精度の両面を見て遅行を判断する。

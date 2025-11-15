@@ -52,7 +52,7 @@ SARIMAモデルは、**ラグ演算子** $L$ を用いた多項式（演算子�
 SARIMAモデルは、これらの演算子を組み合わせて、以下の**差分系列** $Y_t$ の線形関係として定義される。
 
 $$
-\mathbf{\phi_p (L) \tilde{\phi}_P (L^s) \nabla^d \nabla_s^D X_t = A(t) + \theta_q (L) \tilde{\theta}_Q (L^s) \epsilon_t}
+\phi_p (L) \tilde{\phi}_P (L^s) \nabla^d \nabla_s^D X_t = A(t) + \theta_q (L) \tilde{\theta}_Q (L^s) \epsilon_t
 $$
 
 ここで、
@@ -67,7 +67,7 @@ SARIMAXは、SARIMAモデルに**外生変数**（$x_t$ や $u_t$ などで示�
 外生変数 $x_t$ が導入された場合、このモデルは**SARIMAエラーを持つ回帰モデル**として見なされる。
 
 $$
-\mathbf{Y_t = \beta^T x_t + U_t} \quad (\text{または } \beta_t x_t)
+Y_t = \beta^T x_t + U_t \quad (\text{または } \beta_t x_t)
 $$
 
 ここで、

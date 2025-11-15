@@ -1,19 +1,19 @@
 # 時系列モデル実装ガイド（Prophet / SARIMAX / LSTM ハイブリッド概要）
 
-このドキュメントでは、リポジトリに含まれている Python スクリプトのうち、時系列予測モデルの核となる部分を抜粋しながら、必要なライブラリやコード構造を解説します。`analysis.py` や `experiments.py` では実際にこれらの実装が組み合わされており、ここで紹介する各セクションを理解しておけば、任意のデータセットに簡単に適用できます。
+このドキュメントでは、リポジトリに含まれている Python スクリプトのうち、時系列予測モデルの核となる部分を抜粋しながら、必要なライブラリやコード構造を解説する。`analysis.py` や `experiments.py` では実際にこれらの実装が組み合わされており、ここで紹介する各セクションを理解しておけば、任意のデータセットに容易に適用できる。
 
 ---
 
 ## 1. Prophet モデル
 
-Prophet は Meta（旧 Facebook）が公開しているオープンソースライブラリで、「トレンド」「季節性」「祝日」「外生回帰変数」を人間が解釈しやすい形で扱えるのが特徴です。
+Prophet は Meta（旧 Facebook）が公開しているオープンソースライブラリで、「トレンド」「季節性」「祝日」「外生回帰変数」を人間が解釈しやすい形で扱える点が特徴だ。
 
 ### 1.1 必要ライブラリとデータ形式
 
 | 要素 | Pythonライブラリ/オブジェクト | 備考 |
 | --- | --- | --- |
 | **ライブラリ** | `prophet` | メインの予測ツール |
-| **データ形式** | `pandas.DataFrame` | 列名が `ds`（日付）と `y`（目的変数）である必要があります。`analysis.py` の `run_prophet` 関数では `Date` 列を `ds` にリネームしています。 |
+| **データ形式** | `pandas.DataFrame` | 列名が `ds`（日付）と `y`（目的変数）である必要がある。`analysis.py` の `run_prophet` 関数では `Date` 列を `ds` にリネームしている。 |
 
 ### 1.2 基本的なコードフロー
 
@@ -45,17 +45,17 @@ model.plot(forecast)
 model.plot_components(forecast)
 ```
 
-`analysis.py::run_prophet` では、外生回帰変数の列名や平均値の扱いを CLI から指定できるように拡張されています。`experiments.py` でも `evaluate_prophet` 内で複数ラグの回帰器を自動で追加しています。
+`analysis.py::run_prophet` では、外生回帰変数の列名や平均値の扱いを CLI から指定できるように拡張している。`experiments.py` でも `evaluate_prophet` 内で複数ラグの回帰器を自動で追加している。
 
 ---
 
 ## 2. SARIMAX モデル
 
-SARIMAX（Seasonal ARIMA with eXogenous regressors）は、`statsmodels` ライブラリで提供されている汎用的な時系列モデルです。リポジトリでは2つのアプローチが示されています。
+SARIMAX（Seasonal ARIMA with eXogenous regressors）は、`statsmodels` ライブラリで提供されている汎用的な時系列モデルである。リポジトリでは2つのアプローチを示している。
 
 ### 2.1 `pmdarima.auto_arima` による自動次数推定
 
-`pmdarima` ライブラリの `auto_arima` はグリッドサーチを行って最適な次数 `(p, d, q)` および季節次数 `(P, D, Q)` を探索する関数です。
+`pmdarima` ライブラリの `auto_arima` はグリッドサーチを行って最適な次数 `(p, d, q)` および季節次数 `(P, D, Q)` を探索する関数である。
 
 ```python
 import pmdarima as pm
@@ -74,7 +74,7 @@ pred, conf_int = model.predict(n_periods=len(test_series), return_conf_int=True)
 
 ### 2.2 `statsmodels.SARIMAX` とウォークフォワード検証
 
-`analysis.py::run_sarimax` や `experiments.py` の `evaluate_sarimax` では、`statsmodels.tsa.statespace.sarimax.SARIMAX` を用いてグリッドサーチ＋交差検証を行っています。外生変数は `exog=` 引数で指定できます。
+`analysis.py::run_sarimax` や `experiments.py` の `evaluate_sarimax` では、`statsmodels.tsa.statespace.sarimax.SARIMAX` を用いてグリッドサーチ＋交差検証を行っている。外生変数は `exog=` 引数で指定できる。
 
 ```python
 from statsmodels.tsa.statespace.sarimax import SARIMAX
@@ -93,7 +93,7 @@ forecast = result.forecast(steps=len(y_test), exog=exog_test)
 
 #### ウォークフォワード（walk-forward）検証
 
-リポジトリの `evaluate_sarimax` は `sklearn.model_selection.TimeSeriesSplit` を使ってウォークフォワード検証を行い、平均RMSEでベストラグを選びます。`analysis.py::run_sarimax` もほぼ同様のロジックを単一銘柄向けに実装しています。
+リポジトリの `evaluate_sarimax` は `sklearn.model_selection.TimeSeriesSplit` を使ってウォークフォワード検証を行い、平均RMSEでベストラグを選ぶ。`analysis.py::run_sarimax` もほぼ同様のロジックを単一銘柄向けに実装している。
 
 ```python
 tscv = TimeSeriesSplit(n_splits=5)
@@ -107,13 +107,13 @@ for train_idx, test_idx in tscv.split(values):
 
 ### 2.3 残差診断
 
-`sarimax_diagnostics.py` では、ベストモデルに対して Ljung-Box, ARCH テストを実行し、必要に応じて別の `(p,d,q)` にリフィットする仕組みを備えています。また `--fit-garch` を指定すると `arch` ライブラリを用いて GARCH(1,1) を参考情報としてフィットします。
+`sarimax_diagnostics.py` では、ベストモデルに対して Ljung-Box, ARCH テストを実行し、必要に応じて別の `(p,d,q)` にリフィットする仕組みを備えている。また `--fit-garch` を指定すると `arch` ライブラリを用いて GARCH(1,1) を参考情報としてフィットする。
 
 ---
 
 ## 3. ハイブリッド ARIMAX–LSTM
 
-リポジトリには、SARIMAXで線形成分（＋外生変数）を予測し、その残差に対して LSTM を当てるハイブリッドアプローチの構造も含まれています。ここでは LSTM 部分を中心に解説します。
+リポジトリには、SARIMAXで線形成分（＋外生変数）を予測し、その残差に対して LSTM を当てるハイブリッドアプローチの構造も含まれている。ここでは LSTM 部分を中心に解説する。
 
 ### 3.1 LSTM モデルの定義
 
@@ -156,14 +156,14 @@ history = model.fit(
 2. 残差系列を LSTM に入力して非線形成分を学習
 3. 最終的な予測値 = SARIMAX の線形予測 + LSTM 残差予測
 
-`analysis.py` 部分ではまだ LSTM を統合していませんが、上記構造を用いれば簡単に組み込めます。
+`analysis.py` 部分ではまだ LSTM を統合していないが、上記構造を用いれば簡単に組み込める。
 
 ---
 
 ## 4. まとめ
 
-- **Prophet**: `prophet` ライブラリで `ds`, `y` の DataFrame を用意し、`add_regressor` で外生変数を加えるだけで季節性を含むモデルを構築できます。
-- **SARIMAX**: `statsmodels.SARIMAX` で ARIMAX/SARIMAX を構築。`experiments.py` では TimeSeriesSplit を使ったベストラグ探索、`sarimax_diagnostics.py` で Ljung-Box/ARCH 診断と GARCH フィットを自動化しています。
-- **ハイブリッド ARIMAX–LSTM**: 線形構造（SARIMAX）と非線形構造（LSTM）を組み合わせ、残差モデリングに LSTM を使用します。
+- **Prophet**: `prophet` ライブラリで `ds`, `y` の DataFrame を用意し、`add_regressor` で外生変数を加えるだけで季節性を含むモデルを構築できる。
+- **SARIMAX**: `statsmodels.SARIMAX` で ARIMAX/SARIMAX を構築。`experiments.py` では TimeSeriesSplit を使ったベストラグ探索、`sarimax_diagnostics.py` で Ljung-Box/ARCH 診断と GARCH フィットを自動化している。
+- **ハイブリッド ARIMAX–LSTM**: 線形構造（SARIMAX）と非線形構造（LSTM）を組み合わせ、残差モデリングに LSTM を使用する。
 
-これらのサンプルコードを参考に、`analysis.py` や `experiments.py` の CLI オプションを活用すれば、N225 に限らず任意の外生系列を組み合わせた予測実験をすぐに実行できます。***
+これらのサンプルコードを参考に、`analysis.py` や `experiments.py` の CLI オプションを活用すれば、N225 に限らず任意の外生系列を組み合わせた予測実験を迅速に実行できる。***
