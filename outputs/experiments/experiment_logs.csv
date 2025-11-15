@@ -1,0 +1,3 @@
+company,stage,error
+フェイスネットワーク,skip,observations 91 < min 150
+霞ヶ関キャピタル,skip,observations 83 < min 150

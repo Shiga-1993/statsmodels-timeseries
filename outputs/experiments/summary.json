@@ -1,0 +1,12 @@
+{
+  "prophet_trials": 24,
+  "sarimax_trials": 45,
+  "companies": [
+    "明豊エンタープライズ",
+    "日本エスコン",
+    "フェイスネットワーク",
+    "霞ヶ関キャピタル",
+    "日神グループホールディングス"
+  ],
+  "outdir": "outputs/experiments"
+}
