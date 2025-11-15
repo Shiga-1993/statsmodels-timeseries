@@ -21,13 +21,13 @@
 
 ## Key Observations
 - **Prophet**
-  - 9 of 13 tickers prefer multiplicative seasonality (lag 0).
-  - Shifting the regressor by one month improves RMSE for only 3/13 names and often inflates coefficient magnitudes (instability).
-  - Next steps: Standardize returns, try level target, or add alternative covariates; focus on scaling/spec revisions.
+  - 9 of 13 tickers prefer multiplicative seasonality, meaning the bulk of variation can be captured via seasonality/trend tuning. Swapping regressor lags (0–2) yields negligible RMSE differences (≤0.01); N225 helps only marginally, so seasonality adjustments take priority.
+  - Lagging N225 by one month improves RMSE for only 3/13 tickers and often causes unstable coefficients. At present the N225 regressor has limited explanatory power in Prophet compared with seasonal effects.
+  - Next steps: Standardize returns, try level targets, or add alternative covariates; emphasize scaling/spec revisions.
 - **SARIMAX**
-  - 10 of 13 tickers pick lag = 1 with significant coefficients (p < 0.05).
-  - Lags 6 or 12 only help select names and coefficients remain small / insignificant.
-  - Frequent ConvergenceWarnings; recommend tracking `mle_retvals['converged']` and BIC for filtering.
+  - 10 of 13 tickers select lag = 1 (N225 log return) with significant coefficients (p < 0.05), indicating the Nikkei exerts a sizable effect on next-month returns.
+  - Lags 6 or 12 only help a handful of names and coefficients remain small. SARIMAX should default to lag 1 with minor adjustments as needed.
+  - ConvergenceWarnings still appear; track `mle_retvals['converged']` and BIC to filter marginal fits.
 
 ## Handoff Guide
 1. **Environment**
