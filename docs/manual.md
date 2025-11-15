@@ -234,3 +234,27 @@ python sarimax_diagnostics.py \
 - Seasonality や価格レベルを直接予測する案は大幅劣化（`experiments_seasonal/`, `experiments_level_stdN225/`）。
 
 これらを踏まえ、新しい銘柄への適用や追加要件の際は上記マニュアルに沿って実験を再現してください。
+
+---
+
+## 9. ダッシュボード生成 (`visualize_results.py`)
+
+`analysis.py` を実行したディレクトリには `prepared_dataset.csv`, `prophet_in_sample.csv`, `sarimax_in_sample.csv` 等が生成されます。これらをまとめて可視化するには以下を使用します。
+
+```bash
+python visualize_results.py \
+  --analysis-dir outputs/prototype_default \
+  --exog-col n225_ret \
+  --rolling-window 24
+```
+
+- 出力: `summary_dashboard.png`（デフォルトで `analysis-dir` 配下）。`--out-file` で任意のパスを指定可能。
+- サブプロット構成:
+  1. Prophet の実績 vs 予測（未来部分には信頼区間を表示）
+  2. SARIMAX の実績 vs 予測
+  3. 両モデルの残差分布
+  4. 目的変数と外生変数のローリング相関
+  5. SARIMAX ラグ別 CV RMSE
+  6. RMSE/MAE 等のサマリーテキスト
+
+`--show` を指定すると PNG を保存したあとにウィンドウ表示します。複数ディレクトリ（例: N225 と macro index の比較）に対して実行すると、レポートの比較が容易になります。
