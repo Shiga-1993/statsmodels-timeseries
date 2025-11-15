@@ -10,6 +10,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -32,7 +33,65 @@ def _mae(y: np.ndarray, yhat: np.ndarray) -> float:
     return float(np.mean(np.abs(y - yhat)))
 
 
-def visualize(analysis_dir: Path, exog_col: str, rolling_window: int, out_file: Path, show: bool) -> None:
+def _lag_correlations(y: pd.Series, exog: pd.Series, max_lag: int) -> pd.Series:
+    corrs = []
+    for lag in range(max_lag + 1):
+        shifted = exog.shift(lag)
+        combined = pd.concat([y, shifted], axis=1).dropna()
+        if combined.empty:
+            corrs.append(np.nan)
+        else:
+            corrs.append(combined.iloc[:, 0].corr(combined.iloc[:, 1]))
+    return pd.Series(corrs, index=range(max_lag + 1), name="corr")
+
+
+def _load_prophet_coef(analysis_dir: Path, exog_col: str) -> Optional[dict]:
+    coeff_path = analysis_dir / "prophet_coefficients.csv"
+    if not coeff_path.exists():
+        return None
+    coeffs = pd.read_csv(coeff_path)
+    if "regressor" not in coeffs.columns or "coef" not in coeffs.columns:
+        return None
+    row = coeffs.loc[coeffs["regressor"] == exog_col]
+    if row.empty:
+        return None
+    entry = row.iloc[0]
+    return {
+        "coef": float(entry["coef"]),
+        "lower": float(entry["coef_lower"]) if "coef_lower" in entry else np.nan,
+        "upper": float(entry["coef_upper"]) if "coef_upper" in entry else np.nan,
+    }
+
+
+def _parse_sarimax_coef(summary_path: Path) -> Optional[dict]:
+    if not summary_path.exists():
+        return None
+    pattern = re.compile(
+        r"exog_lag\s+([-\d\.Ee+]+)\s+([-\d\.Ee+]+)\s+([-\d\.Ee+]+)\s+([-\d\.Ee+]+)\s+([-\d\.Ee+]+)\s+([-\d\.Ee+]+)"
+    )
+    for line in summary_path.read_text().splitlines():
+        match = pattern.search(line)
+        if match:
+            coef, std_err, z, pvalue, ci_low, ci_high = map(float, match.groups())
+            return {
+                "coef": coef,
+                "std_err": std_err,
+                "z": z,
+                "pvalue": pvalue,
+                "ci_low": ci_low,
+                "ci_high": ci_high,
+            }
+    return None
+
+
+def visualize(
+    analysis_dir: Path,
+    exog_col: str,
+    rolling_window: int,
+    max_lag: int,
+    out_file: Path,
+    show: bool,
+) -> None:
     analysis_dir = analysis_dir.resolve()
     prepared = _load_csv(analysis_dir / "prepared_dataset.csv")
     if prepared is None:
@@ -49,7 +108,7 @@ def visualize(analysis_dir: Path, exog_col: str, rolling_window: int, out_file: 
     prophet_forecast = _load_csv(analysis_dir / "prophet_forecast.csv")
     sarimax_cv = _load_csv(analysis_dir / "sarimax_cv_metrics.csv")
 
-    fig, axes = plt.subplots(3, 2, figsize=(15, 12))
+    fig, axes = plt.subplots(4, 2, figsize=(15, 16))
     ax = axes.ravel()
 
     # Panel 1: Prophet fit + forecast
@@ -115,21 +174,50 @@ def visualize(analysis_dir: Path, exog_col: str, rolling_window: int, out_file: 
         ax3.text(0.5, 0.5, f"{exog_col} not found", ha="center", va="center", transform=ax3.transAxes)
         ax3.axis("off")
 
-    # Panel 5: SARIMAX lag RMSE
-    ax4 = ax[4]
+    lag_scores = None
+    best_lag = None
     if sarimax_cv is not None and "lag" in sarimax_cv.columns:
         lag_scores = sarimax_cv.groupby("lag")["rmse"].mean()
-        ax4.bar(lag_scores.index.astype(str), lag_scores.values, color="#ff7f0e")
-        ax4.set_title("CV RMSE by lag")
-        ax4.set_xlabel("Lag")
-        ax4.set_ylabel("RMSE")
+        if not lag_scores.empty:
+            best_lag = int(lag_scores.idxmin())
+
+    # Panel 5: Cross-correlation vs lag
+    ax4 = ax[4]
+    lag_corr = None
+    if exog_col in prepared.columns:
+        lag_corr = _lag_correlations(prepared["y"], prepared[exog_col], max_lag)
+        ax4.bar(lag_corr.index, lag_corr.values, color="#9467bd")
+        ax4.axhline(0, color="gray", linestyle="--", linewidth=0.8)
+        if best_lag is not None:
+            ax4.axvline(best_lag, color="#ff7f0e", linestyle="--", linewidth=1.2, label="SARIMAX best lag")
+            ax4.legend()
+        ax4.set_title("Cross-correlation vs lag")
+        ax4.set_xlabel("Lag (months)")
+        ax4.set_ylabel("Correlation (y vs exog lag)")
     else:
-        ax4.text(0.5, 0.5, "sarimax_cv_metrics.csv not found", ha="center", va="center", transform=ax4.transAxes)
+        ax4.text(0.5, 0.5, f"{exog_col} not found", ha="center", va="center", transform=ax4.transAxes)
         ax4.axis("off")
 
-    # Panel 6: Summary text
+    # Panel 6: SARIMAX lag RMSE
     ax5 = ax[5]
-    ax5.axis("off")
+    if lag_scores is not None:
+        ax5.bar(lag_scores.index.astype(str), lag_scores.values, color="#ff7f0e")
+        ax5.set_title("CV RMSE by lag")
+        ax5.set_xlabel("Lag")
+        ax5.set_ylabel("RMSE")
+    else:
+        ax5.text(0.5, 0.5, "sarimax_cv_metrics.csv not found", ha="center", va="center", transform=ax5.transAxes)
+        ax5.axis("off")
+
+    prophet_coef = _load_prophet_coef(analysis_dir, exog_col)
+    sarimax_coef = _parse_sarimax_coef(analysis_dir / "sarimax_summary.txt")
+    corr_at_best = None
+    if lag_corr is not None and best_lag is not None and best_lag in lag_corr.index:
+        corr_at_best = float(lag_corr.loc[best_lag])
+
+    # Panel 7: Summary text
+    ax6 = ax[6]
+    ax6.axis("off")
     summary_lines = [
         "Summary",
         "",
@@ -139,9 +227,85 @@ def visualize(analysis_dir: Path, exog_col: str, rolling_window: int, out_file: 
         f"SARIMAX RMSE: {sarimax_rmse:.4f}" if not np.isnan(sarimax_rmse) else "SARIMAX RMSE: n/a",
         f"SARIMAX MAE : {sarimax_mae:.4f}" if not np.isnan(sarimax_mae) else "SARIMAX MAE : n/a",
         "",
+        f"Prophet β ({exog_col}): {prophet_coef['coef']:.3f}" if prophet_coef else "Prophet β: n/a",
+        (
+            "SARIMAX β: "
+            + f"{sarimax_coef['coef']:.3f} (p={sarimax_coef['pvalue']:.3g})"
+            if sarimax_coef
+            else "SARIMAX β: n/a"
+        ),
+        (
+            f"Corr(y, {exog_col} lag {best_lag}): {corr_at_best:.3f}"
+            if corr_at_best is not None and best_lag is not None
+            else "Corr(y, exog lag): n/a"
+        ),
+        "",
+        f"SARIMAX CV best lag: {best_lag}" if best_lag is not None else "SARIMAX CV best lag: n/a",
         f"Records: {len(prepared)} rows",
     ]
-    ax5.text(0.05, 0.95, "\n".join(summary_lines), va="top", ha="left", fontsize=11)
+    ax6.text(0.05, 0.95, "\n".join(summary_lines), va="top", ha="left", fontsize=11)
+
+    # Panel 8: Lag & coefficient insights (visual)
+    ax7 = ax[7]
+    ax7.set_title("Impact summary (β=model coefficient, corr=plain corr(y, exog lag))")
+    ax7.axvline(0, color="gray", linestyle="--", linewidth=0.8)
+    impact_items = []
+    if prophet_coef:
+        err = None
+        lower = prophet_coef.get("lower")
+        upper = prophet_coef.get("upper")
+        if lower is not None and upper is not None and np.isfinite(lower) and np.isfinite(upper):
+            err = max(abs(prophet_coef["coef"] - lower), abs(upper - prophet_coef["coef"]))
+        impact_items.append(
+            {
+                "label": f"Prophet β ({exog_col})",
+                "value": prophet_coef["coef"],
+                "err": err,
+                "color": "#1f77b4",
+                "note": None,
+            }
+        )
+    if sarimax_coef:
+        impact_items.append(
+            {
+                "label": f"SARIMAX β (lag {best_lag if best_lag is not None else 'n/a'})",
+                "value": sarimax_coef["coef"],
+                "err": sarimax_coef.get("std_err"),
+                "color": "#ff7f0e",
+                "note": f"p={sarimax_coef['pvalue']:.3g}",
+            }
+        )
+    if corr_at_best is not None:
+        impact_items.append(
+            {
+                "label": f"Corr(y, {exog_col} lag {best_lag})",
+                "value": corr_at_best,
+                "err": None,
+                "color": "#9467bd",
+                "note": None,
+            }
+        )
+
+    if impact_items:
+        labels = [item["label"] for item in impact_items]
+        values = [item["value"] for item in impact_items]
+        colors = [item["color"] for item in impact_items]
+        y_pos = np.arange(len(labels))
+        ax7.barh(y_pos, values, color=colors, alpha=0.85)
+        ax7.set_yticks(y_pos, labels)
+        ax7.set_xlabel("Coefficient / correlation value")
+        for i, item in enumerate(impact_items):
+            err = item.get("err")
+            if err is not None and np.isfinite(err) and err > 0:
+                ax7.errorbar(values[i], y_pos[i], xerr=err, fmt="none", color="black", capsize=4)
+            note = item.get("note")
+            if note:
+                x_offset = 0.02 if values[i] >= 0 else -0.02
+                ha = "left" if values[i] >= 0 else "right"
+                ax7.text(values[i] + x_offset, y_pos[i], note, va="center", ha=ha, fontsize=10)
+    else:
+        ax7.axis("off")
+        ax7.text(0.5, 0.5, "Insufficient data for impact summary", ha="center", va="center")
 
     fig.suptitle(f"Analysis dashboard: {analysis_dir.name}", fontsize=16)
     fig.tight_layout(rect=[0, 0.01, 1, 0.97])
@@ -156,13 +320,14 @@ def main() -> None:
     parser.add_argument("--analysis-dir", type=Path, required=True)
     parser.add_argument("--exog-col", type=str, default="n225_ret")
     parser.add_argument("--rolling-window", type=int, default=24)
+    parser.add_argument("--max-lag", type=int, default=12, help="Maximum lag in months for cross-correlation panel.")
     parser.add_argument("--out-file", type=Path, default=None, help="Output image path (default: analysis_dir/dashboard.png)")
     parser.add_argument("--show", action="store_true", help="Display the figure after saving.")
     args = parser.parse_args()
 
     analysis_dir = args.analysis_dir
     out_file = args.out_file or analysis_dir / "summary_dashboard.png"
-    visualize(analysis_dir, args.exog_col, args.rolling_window, out_file, args.show)
+    visualize(analysis_dir, args.exog_col, args.rolling_window, args.max_lag, out_file, args.show)
     print(f"Dashboard saved to {out_file}")
 
 

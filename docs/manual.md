@@ -245,7 +245,8 @@ python sarimax_diagnostics.py \
 python visualize_results.py \
   --analysis-dir outputs/prototype_default \
   --exog-col n225_ret \
-  --rolling-window 24
+  --rolling-window 24 \
+  --max-lag 12
 ```
 
 - 出力: `summary_dashboard.png`（デフォルトで `analysis-dir` 配下）。`--out-file` で任意のパスを指定可能。
@@ -254,7 +255,15 @@ python visualize_results.py \
   2. SARIMAX の実績 vs 予測
   3. 両モデルの残差分布
   4. 目的変数と外生変数のローリング相関
-  5. SARIMAX ラグ別 CV RMSE
-  6. RMSE/MAE 等のサマリーテキスト
+  5. クロス相関 (`y` vs 外生変数ラグ。`--max-lag` まで棒グラフで表示、CVベストラグを破線でマーキング)
+  6. SARIMAX ラグ別 CV RMSE（`analysis.py::run_sarimax` の CV 結果。Prophet ではなく SARIMAX のラグ比較）
+  7. RMSE/MAE 等のサマリーテキスト
+  8. Lag & Coefficient Insights（Prophet β / SARIMAX β / `corr(y, exog lag)` を横棒グラフ化。SARIMAX には p 値と標準誤差、Prophet には係数区間を表示）
 
-`--show` を指定すると PNG を保存したあとにウィンドウ表示します。複数ディレクトリ（例: N225 と macro index の比較）に対して実行すると、レポートの比較が容易になります。
+`--show` を指定すると PNG を保存したあとにウィンドウ表示します。複数ディレクトリ（例: N225 と macro index の比較）に対して実行すると、レポートやプレゼン資料用の図が揃います。
+
+**読み解きの目安**
+- クロス相関パネル: 一般的な経験則で |corr|≲0.2 は弱、0.2〜0.4 (例: 0.3) は中程度、0.4 以上で強めのリンクと解釈できます。棒の高さと SARIMAX CV ベストラグ（破線）が一致しているかを見ると、「なぜそのラグが選ばれたか」が腹落ちします。
+- Lag & Coefficient Insights: 横棒グラフとして Prophet β, SARIMAX β, `corr(y, exog lag)` を並べているので、符号の違いや統計的有意性を一目で判断できます（SARIMAX には p 値・SE、Prophet には係数区間）。corr が中程度でも p≪0.05 ならモデルでは十分効いている、といった整理ができます。図は優劣を決めるものではなく、モデル係数と生相関の調和/乖離を把握する用途です。
+- `corr(y, exog lag k)` は目的変数と `k` ヶ月遅行させた外生変数との相関 (`corr(y_t, exog_{t-k})`) を意味します。
+- タイトルに “β=model coefficient, corr=plain corr(y, exog lag)” と記されている通り、corr は生の相関値です。これが Prophet/SARIMAX の β より大きい時は「観測上は強い結び付きだが、モデル係数は（他要因や正則化により）控えめ」という状況、逆に β が大きい時はモデルがその影響を強く利用している状況と読み取れます。
